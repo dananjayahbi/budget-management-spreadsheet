@@ -5,6 +5,15 @@ import tkinter as tk
 from tkinter import ttk
 from datetime import datetime, timedelta
 import calendar
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.pyplot as plt
+import sys
+import os
+
+# Add utils to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from utils.predictor import FinancialPredictor
 
 class AnalyticsTab:
     """Analytics and reporting tab"""
@@ -13,6 +22,9 @@ class AnalyticsTab:
         self.config_manager = config_manager
         self.db_manager = db_manager
         self.colors = colors
+        
+        # Initialize predictor
+        self.predictor = FinancialPredictor(db_manager)
         
         # Create main frame
         self.frame = tk.Frame(parent, bg=colors['bg'])
@@ -57,6 +69,9 @@ class AnalyticsTab:
         padding = tk.Frame(content_frame, bg=self.colors['bg'], height=20)
         padding.pack(fill="x")
         
+        # ML Prediction section
+        self._create_prediction_section(content_frame)
+        
         # Period selector
         self._create_period_selector(content_frame)
         
@@ -71,6 +86,209 @@ class AnalyticsTab:
         
         # Spending insights
         self._create_spending_insights(content_frame)
+        
+        # Visual charts
+        self._create_visual_charts(content_frame)
+        
+    def _create_prediction_section(self, parent):
+        """Create ML prediction section"""
+        section_frame = tk.Frame(parent, bg=self.colors['bg'])
+        section_frame.pack(fill="x", padx=30, pady=20)
+        
+        title = tk.Label(section_frame,
+                        text="🤖 Financial Prediction (ML-Powered)",
+                        bg=self.colors['bg'],
+                        fg=self.colors['primary'],
+                        font=('Segoe UI', 14, 'bold'),
+                        anchor='w')
+        title.pack(fill="x", pady=(0, 10))
+        
+        # Prediction card
+        pred_card = tk.Frame(section_frame, bg=self.colors['card'], relief="flat")
+        pred_card.pack(fill="both", expand=True)
+        pred_card.configure(highlightbackground="#e0e0e0", highlightthickness=1)
+        
+        # Get prediction
+        try:
+            prediction = self.predictor.predict_month_survival()
+            
+            # Main message with color coding
+            message_color = self.colors['success'] if prediction['can_survive'] else self.colors['danger']
+            
+            message_frame = tk.Frame(pred_card, bg=message_color)
+            message_frame.pack(fill="x", padx=2, pady=2)
+            
+            message_label = tk.Label(message_frame,
+                                    text=prediction['message'],
+                                    bg=message_color,
+                                    fg=self.colors['white'],
+                                    font=('Segoe UI', 13, 'bold'),
+                                    wraplength=700,
+                                    pady=20)
+            message_label.pack(fill="x", padx=20)
+            
+            # Details frame
+            details_frame = tk.Frame(pred_card, bg=self.colors['card'])
+            details_frame.pack(fill="both", expand=True, padx=30, pady=20)
+            
+            # Confidence score
+            confidence_frame = tk.Frame(details_frame, bg=self.colors['card'])
+            confidence_frame.pack(fill="x", pady=10)
+            
+            conf_label = tk.Label(confidence_frame,
+                                 text=f"Confidence Score: {prediction['confidence']:.1f}%",
+                                 bg=self.colors['card'],
+                                 fg=self.colors['primary'],
+                                 font=('Segoe UI', 12, 'bold'))
+            conf_label.pack(side="left")
+            
+            # Confidence bar
+            bar_bg = tk.Frame(confidence_frame, bg=self.colors['light'], height=15, width=200)
+            bar_bg.pack(side="left", padx=15)
+            
+            bar_fill = tk.Frame(bar_bg, bg=message_color, height=15)
+            bar_fill.place(x=0, y=0, relwidth=prediction['confidence']/100, relheight=1)
+            
+            # Trend comparison
+            if prediction['trend']:
+                trend_label = tk.Label(details_frame,
+                                      text=f"📊 Trend: {prediction['trend']}",
+                                      bg=self.colors['card'],
+                                      fg=self.colors['dark'],
+                                      font=('Segoe UI', 10))
+                trend_label.pack(anchor='w', pady=5)
+            
+            # Detailed breakdown
+            details = prediction.get('details', {})
+            if details:
+                # Create a grid for detailed info
+                info_grid = tk.Frame(details_frame, bg=self.colors['card'])
+                info_grid.pack(fill="x", pady=15)
+                
+                # Current balance
+                self._create_detail_row(info_grid, "Current Balance:", 
+                                       f"${details.get('current_balance', 0):,.2f}", 0)
+                
+                # Daily average expense
+                self._create_detail_row(info_grid, "Avg. Daily Expense:", 
+                                       f"${details.get('daily_avg_expense', 0):.2f}", 1)
+                
+                # Daily average income
+                self._create_detail_row(info_grid, "Avg. Daily Income:", 
+                                       f"${details.get('daily_avg_income', 0):.2f}", 2)
+                
+                # Projected end balance
+                proj_balance = details.get('projected_balance', 0)
+                proj_color = self.colors['success'] if proj_balance >= 0 else self.colors['danger']
+                self._create_detail_row(info_grid, "Projected Month-End Balance:", 
+                                       f"${proj_balance:,.2f}", 3, value_color=proj_color)
+                
+        except Exception as e:
+            error_label = tk.Label(pred_card,
+                                  text=f"Unable to generate prediction: {str(e)}",
+                                  bg=self.colors['card'],
+                                  fg=self.colors['danger'],
+                                  font=('Segoe UI', 10),
+                                  pady=30)
+            error_label.pack()
+    
+    def _create_detail_row(self, parent, label, value, row, value_color=None):
+        """Create a detail row in prediction section"""
+        if value_color is None:
+            value_color = self.colors['primary']
+            
+        label_widget = tk.Label(parent,
+                               text=label,
+                               bg=self.colors['card'],
+                               fg=self.colors['dark'],
+                               font=('Segoe UI', 10),
+                               anchor='w')
+        label_widget.grid(row=row, column=0, sticky='w', padx=(0, 20), pady=5)
+        
+        value_widget = tk.Label(parent,
+                               text=value,
+                               bg=self.colors['card'],
+                               fg=value_color,
+                               font=('Segoe UI', 10, 'bold'),
+                               anchor='e')
+        value_widget.grid(row=row, column=1, sticky='e', pady=5)
+        
+        parent.grid_columnconfigure(1, weight=1)
+    
+    def _create_visual_charts(self, parent):
+        """Create matplotlib charts for trends visualization"""
+        section_frame = tk.Frame(parent, bg=self.colors['bg'])
+        section_frame.pack(fill="both", padx=30, pady=20)
+        
+        title = tk.Label(section_frame,
+                        text="📈 Expense & Income Trends",
+                        bg=self.colors['bg'],
+                        fg=self.colors['primary'],
+                        font=('Segoe UI', 14, 'bold'),
+                        anchor='w')
+        title.pack(fill="x", pady=(0, 10))
+        
+        # Chart card
+        chart_card = tk.Frame(section_frame, bg=self.colors['card'], relief="flat")
+        chart_card.pack(fill="both", expand=True)
+        chart_card.configure(highlightbackground="#e0e0e0", highlightthickness=1)
+        
+        try:
+            # Get trend data
+            trend_data = self.predictor.get_spending_trend(months=6)
+            
+            if trend_data:
+                # Create matplotlib figure
+                fig = Figure(figsize=(10, 5), facecolor='white')
+                ax = fig.add_subplot(111)
+                
+                # Extract data
+                months = [item['month'] for item in trend_data]
+                expenses = [item['expenses'] for item in trend_data]
+                income = [item['income'] for item in trend_data]
+                
+                # Plot lines
+                ax.plot(months, expenses, marker='o', linewidth=2, 
+                       color='#E74C3C', label='Expenses')
+                ax.plot(months, income, marker='s', linewidth=2, 
+                       color='#27AE60', label='Income')
+                
+                # Styling
+                ax.set_xlabel('Month', fontsize=11, fontweight='bold')
+                ax.set_ylabel('Amount ($)', fontsize=11, fontweight='bold')
+                ax.set_title('6-Month Financial Trend', fontsize=13, fontweight='bold', pad=20)
+                ax.legend(loc='upper left', fontsize=10)
+                ax.grid(True, alpha=0.3, linestyle='--')
+                
+                # Format y-axis as currency
+                ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x:,.0f}'))
+                
+                # Rotate x-axis labels
+                plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
+                
+                fig.tight_layout()
+                
+                # Embed in tkinter
+                canvas = FigureCanvasTkAgg(fig, master=chart_card)
+                canvas.draw()
+                canvas.get_tk_widget().pack(fill="both", expand=True, padx=20, pady=20)
+            else:
+                no_data = tk.Label(chart_card,
+                                  text="Not enough data to generate trend charts",
+                                  bg=self.colors['card'],
+                                  fg=self.colors['dark'],
+                                  font=('Segoe UI', 11),
+                                  pady=40)
+                no_data.pack()
+                
+        except Exception as e:
+            error_label = tk.Label(chart_card,
+                                  text=f"Unable to generate charts: {str(e)}",
+                                  bg=self.colors['card'],
+                                  fg=self.colors['danger'],
+                                  font=('Segoe UI', 10),
+                                  pady=30)
+            error_label.pack()
         
     def _create_period_selector(self, parent):
         """Create period selection controls"""
