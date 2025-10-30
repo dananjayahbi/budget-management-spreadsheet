@@ -221,7 +221,67 @@ class ExpensesTab:
                         bg=self.colors['bg'],
                         fg=self.colors['dark'],
                         font=('Segoe UI', 13, 'bold'))
-        title.pack(pady=(0, 15), anchor='w')
+        title.pack(pady=(0, 10), anchor='w')
+        
+        # Date filter buttons frame
+        date_filter_frame = tk.Frame(list_card, bg=self.colors['bg'])
+        date_filter_frame.pack(fill="x", pady=(0, 10))
+        
+        tk.Label(date_filter_frame,
+                text="Date Filter:",
+                bg=self.colors['bg'],
+                fg=self.colors['dark'],
+                font=('Segoe UI', 9, 'bold')).pack(side="left", padx=(0, 10))
+        
+        self.date_filter_var = tk.StringVar(value="current_month")
+        
+        # Today button
+        today_btn = tk.Radiobutton(date_filter_frame,
+                                   text="Today",
+                                   variable=self.date_filter_var,
+                                   value="today",
+                                   bg=self.colors['bg'],
+                                   fg=self.colors['dark'],
+                                   font=('Segoe UI', 9),
+                                   selectcolor=self.colors['bg'],
+                                   command=self._apply_date_filter)
+        today_btn.pack(side="left", padx=(0, 10))
+        
+        # Yesterday button
+        yesterday_btn = tk.Radiobutton(date_filter_frame,
+                                       text="Yesterday",
+                                       variable=self.date_filter_var,
+                                       value="yesterday",
+                                       bg=self.colors['bg'],
+                                       fg=self.colors['dark'],
+                                       font=('Segoe UI', 9),
+                                       selectcolor=self.colors['bg'],
+                                       command=self._apply_date_filter)
+        yesterday_btn.pack(side="left", padx=(0, 10))
+        
+        # Current Month button
+        month_btn = tk.Radiobutton(date_filter_frame,
+                                   text="Current Month",
+                                   variable=self.date_filter_var,
+                                   value="current_month",
+                                   bg=self.colors['bg'],
+                                   fg=self.colors['dark'],
+                                   font=('Segoe UI', 9),
+                                   selectcolor=self.colors['bg'],
+                                   command=self._apply_date_filter)
+        month_btn.pack(side="left", padx=(0, 10))
+        
+        # Custom range button
+        custom_btn = tk.Radiobutton(date_filter_frame,
+                                    text="Custom Range",
+                                    variable=self.date_filter_var,
+                                    value="custom",
+                                    bg=self.colors['bg'],
+                                    fg=self.colors['dark'],
+                                    font=('Segoe UI', 9),
+                                    selectcolor=self.colors['bg'],
+                                    command=self._show_date_range_dialog)
+        custom_btn.pack(side="left")
         
         # Search/Filter frame - Compact
         filter_frame = tk.Frame(list_card, bg=self.colors['bg'])
@@ -370,51 +430,12 @@ class ExpensesTab:
         self.type_var.set("expense")
         
     def _load_expenses(self):
-        """Load expenses into treeview"""
-        # Clear existing items
-        for item in self.expense_tree.get_children():
-            self.expense_tree.delete(item)
-        
-        # Load from database
-        expenses = self.db_manager.get_all_transactions()
-        
-        for expense in expenses:
-            trans_type = expense['type']
-            # Store ID in iid and type in tags for color-coding
-            item_id = self.expense_tree.insert('', 'end', 
-                                               iid=expense['id'],
-                                               values=(
-                                                   expense['date'],
-                                                   expense['description'],
-                                                   f"${expense['amount']:.2f}",
-                                                   trans_type.capitalize()
-                                               ), 
-                                               tags=(trans_type,))
+        """Load expenses into treeview with current date filter"""
+        self._apply_date_filter()
             
     def _filter_expenses(self, *args):
-        """Filter expenses based on search"""
-        search_term = self.search_var.get().lower()
-        
-        # Clear existing items
-        for item in self.expense_tree.get_children():
-            self.expense_tree.delete(item)
-        
-        # Load filtered data
-        expenses = self.db_manager.get_all_transactions()
-        
-        for expense in expenses:
-            if (search_term in expense['description'].lower()):
-                trans_type = expense['type']
-                # Store ID in iid and type in tags for color-coding
-                item_id = self.expense_tree.insert('', 'end',
-                                                   iid=expense['id'],
-                                                   values=(
-                                                       expense['date'],
-                                                       expense['description'],
-                                                       f"${expense['amount']:.2f}",
-                                                       trans_type.capitalize()
-                                                   ), 
-                                                   tags=(trans_type,))
+        """Filter expenses based on search and current date filter"""
+        self._apply_date_filter()
                 
     def _delete_expense(self):
         """Delete selected expense"""
@@ -437,3 +458,125 @@ class ExpensesTab:
             if self.analytics_tab:
                 self.analytics_tab._refresh_analytics()
             messagebox.showinfo("Success", "Transaction deleted successfully!")
+    
+    def _apply_date_filter(self):
+        """Apply the selected date filter"""
+        filter_type = self.date_filter_var.get()
+        from datetime import datetime, timedelta
+        
+        # Get current date
+        today = datetime.now().date()
+        
+        # Determine date range based on filter
+        if filter_type == "today":
+            start_date = today
+            end_date = today
+        elif filter_type == "yesterday":
+            start_date = today - timedelta(days=1)
+            end_date = today - timedelta(days=1)
+        elif filter_type == "current_month":
+            # Get first and last day of current month
+            start_date = today.replace(day=1)
+            # Get last day of month
+            if today.month == 12:
+                end_date = today.replace(day=31)
+            else:
+                next_month = today.replace(month=today.month + 1, day=1)
+                end_date = next_month - timedelta(days=1)
+        else:
+            return  # Custom range handled separately
+        
+        self._load_filtered_expenses(start_date, end_date)
+    
+    def _show_date_range_dialog(self):
+        """Show dialog for custom date range selection"""
+        from tkinter import Toplevel
+        from datetime import datetime
+        
+        dialog = Toplevel(self.frame)
+        dialog.title("Select Date Range")
+        dialog.geometry("350x200")
+        dialog.transient(self.frame)
+        dialog.grab_set()
+        
+        # Center dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (350 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (200 // 2)
+        dialog.geometry(f'350x200+{x}+{y}')
+        
+        # From date
+        tk.Label(dialog, text="From Date:", font=('Segoe UI', 10)).pack(pady=(20, 5))
+        try:
+            from_date = DateEntry(dialog, width=20, font=('Segoe UI', 10), date_pattern='yyyy-mm-dd')
+            from_date.pack(pady=5)
+        except:
+            from_date = tk.Entry(dialog, font=('Segoe UI', 10))
+            from_date.insert(0, datetime.now().strftime('%Y-%m-%d'))
+            from_date.pack(pady=5)
+        
+        # To date
+        tk.Label(dialog, text="To Date:", font=('Segoe UI', 10)).pack(pady=(10, 5))
+        try:
+            to_date = DateEntry(dialog, width=20, font=('Segoe UI', 10), date_pattern='yyyy-mm-dd')
+            to_date.pack(pady=5)
+        except:
+            to_date = tk.Entry(dialog, font=('Segoe UI', 10))
+            to_date.insert(0, datetime.now().strftime('%Y-%m-%d'))
+            to_date.pack(pady=5)
+        
+        def apply_range():
+            try:
+                if hasattr(from_date, 'get_date'):
+                    start = from_date.get_date()
+                    end = to_date.get_date()
+                else:
+                    start = datetime.strptime(from_date.get(), '%Y-%m-%d').date()
+                    end = datetime.strptime(to_date.get(), '%Y-%m-%d').date()
+                
+                self._load_filtered_expenses(start, end)
+                dialog.destroy()
+            except Exception as e:
+                messagebox.showerror("Error", f"Invalid date format: {str(e)}")
+        
+        tk.Button(dialog, text="Apply", bg=self.colors['success'], fg=self.colors['white'],
+                 font=('Segoe UI', 10, 'bold'), relief="flat", command=apply_range,
+                 padx=20, pady=8).pack(pady=15)
+    
+    def _load_filtered_expenses(self, start_date, end_date):
+        """Load expenses filtered by date range"""
+        from datetime import datetime
+        
+        # Clear existing items
+        for item in self.expense_tree.get_children():
+            self.expense_tree.delete(item)
+        
+        # Load from database
+        expenses = self.db_manager.get_all_transactions()
+        
+        # Apply search filter if any
+        search_term = self.search_var.get().lower()
+        
+        for expense in expenses:
+            # Parse expense date
+            try:
+                expense_date = datetime.strptime(expense['date'], '%Y-%m-%d').date()
+            except:
+                continue
+            
+            # Check if within date range
+            if start_date <= expense_date <= end_date:
+                # Check search filter
+                if search_term and search_term not in expense['description'].lower():
+                    continue
+                
+                trans_type = expense['type']
+                self.expense_tree.insert('', 'end',
+                                       iid=expense['id'],
+                                       values=(
+                                           expense['date'],
+                                           expense['description'],
+                                           f"${expense['amount']:.2f}",
+                                           trans_type.capitalize()
+                                       ),
+                                       tags=(trans_type,))
